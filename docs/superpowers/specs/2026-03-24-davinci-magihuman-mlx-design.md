@@ -60,19 +60,24 @@ Full pipeline I/O (text encoder + transformer + VAE + SR): ~1-2 minutes of weigh
 - Layers 36-39: Modality-specific output projection (SwiGLU7 FFN, gated)
 
 Per-block structure:
-- RMSNorm -> Self-Attention (RoPE, SPLIT variant) -> residual
-- RMSNorm -> Cross-Attention (to text) -> residual
+- RMSNorm -> Self-Attention (GQA 40Q/8KV, RoPE SPLIT) -> residual
+- RMSNorm -> Cross-Attention (to text, standard MHA — Q from hidden, KV from 3584-dim text via projection to hidden) -> residual
 - RMSNorm -> FFN (GELU7 or SwiGLU7 depending on layer) -> residual
 - AdaLN modulation from timestep embedding
+
+Note: Both GELU7 and SwiGLU7 use clamped activations (output clamped to [-7, 7]).
+This is daVinci-specific behavior not present in LTX-2-MLX.
 
 Key dimensions:
 - Hidden: 5120
 - Head dim: 128
 - Query heads: 40 (5120 / 128)
-- KV heads: 8 (grouped-query attention, 5:1 ratio)
+- KV heads (self-attention): 8 (grouped-query attention, 5:1 ratio)
+- Cross-attention: Q projects from hidden (5120), KV projects from text (3584) to hidden
+- Text projection: 3584 -> 5120 linear layer inside transformer (PixArt-style caption projection)
 - Video input channels: 192 (= 48 VAE latent channels x 4 from 2x2 spatial patch)
 - Text input channels: 3584
-- FFN intermediate (SwiGLU7): 13652 (= int(5120 * 4 * 2/3) // 4 * 4, gated)
+- FFN intermediate (SwiGLU7): 13652 (gated — the 2/3 factor compensates for the extra gate projection: 3 matrices vs 2)
 - FFN intermediate (GELU7): 20480 (= 5120 * 4, non-gated)
 
 ### VAE Latent Space
@@ -116,7 +121,7 @@ Key dimensions:
 │   │   ├── distilled.py                # 8-step distilled generation
 │   │   └── common.py                   # Shared utilities, input validation
 │   ├── components/
-│   │   ├── scheduler.py                # Flow-matching scheduler (DDIM step)
+│   │   ├── scheduler.py                # Flow-matching Euler step (linear interp)
 │   │   ├── patchifier.py               # Latent <-> sequence conversion
 │   │   └── data_proxy.py               # Token sequence assembly
 │   ├── kernels/
@@ -198,7 +203,7 @@ HuggingFace (sharded safetensors)
 ```
 1. Load text_encoder -> encode prompt -> unload        (~20 GB peak)
 2. Initialize noise latent (48 channels, VAE stride 4/16/16)
-3. Load transformer -> 8 DDIM/Euler denoise steps -> unload  (~35-40 GB FP16 / ~12 GB INT4)
+3. Load transformer -> 8 flow-matching Euler steps -> unload  (~35-40 GB FP16 / ~12 GB INT4)
 4. Load turbo_vae -> decode latents to video -> unload  (~5 GB peak)
 5. (Optional) Load sr_540p -> upscale -> unload
 6. Save MP4 via imageio at 24fps
@@ -213,9 +218,16 @@ Sequential load/unload pattern:
 
 ### Scheduler
 
-FlowUniPCMultistepScheduler using `step_ddim` method for the distilled path.
-This is effectively a flow-matching Euler/DDIM step: `prev_state = prev_t * noise + (1 - prev_t) * predicted_clean`.
+The distilled path uses a simple flow-matching linear interpolation step:
+`prev_state = prev_t * noise + (1 - prev_t) * predicted_clean`
+
+This is a first-order Euler step for flow matching. The source code calls this
+`step_ddim` on a `FlowUniPCMultistepScheduler` object, but the actual logic is
+a single-step linear interpolation (not the higher-order UniPC solver or standard DDIM).
 Fixed sigma schedule for 8 steps. Ported from daVinci's `scheduler_unipc.py`.
+
+Important: call `mx.eval(latent)` after every denoise step to force evaluation
+and prevent computation graph accumulation across all 8 steps (MLX lazy evaluation).
 
 ### Compiled Kernels and Fused Ops
 
