@@ -1,5 +1,4 @@
 """Tests for pipeline utilities."""
-import mlx.core as mx
 from davinci_mlx.pipeline.common import validate_dimensions, compute_latent_shape
 
 
