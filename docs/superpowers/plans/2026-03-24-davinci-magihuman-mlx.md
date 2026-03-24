@@ -34,6 +34,10 @@ The following corrections to the spec were discovered by reading the actual daVi
 
 8. **Actual weight key names** differ from spec assumptions. See Task 11 for exact mapping.
 
+9. **NativeMoELinear handling.** Layers 0-3 and 36-39 may store per-modality expert weights (shape `[num_experts * out, in]`). For video-only distilled inference, we only need the video expert slice. Task 11 Step 1 MUST verify the actual weight shapes to determine if expert extraction is needed. If weights have standard shapes (no expert dimension), use plain `nn.Linear`. If expert-indexed, the weight converter must extract the video expert slice during conversion.
+
+10. **MultiModalityRMSNorm simplification.** If the distilled video-only weights use single-expert norms (1 weight vector per layer), the plan's plain `RMSNorm` implementation is correct. If some layers have 3 expert norms, the converter must extract the video norm. Verify in Task 11 Step 1.
+
 ---
 
 ### Task 1: Project Scaffolding
@@ -65,7 +69,7 @@ davinci-generate = "scripts.generate:main"
 
 [build-system]
 requires = ["setuptools>=75.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 ```
 
 - [ ] **Step 2: Create .gitignore**
@@ -464,10 +468,9 @@ import mlx.core as mx
 _SILU_MUL_SOURCE = """
     uint elem = thread_position_in_grid.x;
     if (elem < a.size()) {
-        float x = static_cast<float>(a[elem]);
-        float sigmoid_x = 1.0f / (1.0f + exp(-x));
-        out[elem] = static_cast<decltype(out[elem])>(
-            x * sigmoid_x * static_cast<float>(b[elem]));
+        T x = a[elem];
+        T sigmoid_x = T(1) / (T(1) + exp(-x));
+        out[elem] = x * sigmoid_x * b[elem];
     }
 """
 
@@ -488,8 +491,12 @@ def _get_kernel():
 
 def silu_mul(a: mx.array, b: mx.array) -> mx.array:
     kernel = _get_kernel()
+    # Ensure contiguous memory layout for Metal kernel
+    a = mx.contiguous(a) if not a.flags["row_contiguous"] else a
+    b = mx.contiguous(b) if not b.flags["row_contiguous"] else b
     return kernel(
         inputs=[a, b],
+        template=[("T", a.dtype)],
         output_shapes=[a.shape],
         output_dtypes=[a.dtype],
         grid=(a.size, 1, 1),
@@ -597,10 +604,8 @@ class Attention(nn.Module):
             q = apply_rotary_emb(q, cos_freqs, sin_freqs, positions)
             k = apply_rotary_emb(k, cos_freqs, sin_freqs, positions)
 
-        if self.gqa_ratio > 1:
-            k = mx.repeat(k, self.gqa_ratio, axis=1)
-            v = mx.repeat(v, self.gqa_ratio, axis=1)
-
+        # NOTE: Do NOT repeat K/V for GQA. MLX's scaled_dot_product_attention
+        # natively handles GQA when K/V have fewer heads than Q.
         attn_out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
         attn_out = attn_out.transpose(0, 2, 1, 3).reshape(B, T, -1)
         attn_out = self.linear_proj(attn_out)
@@ -786,14 +791,14 @@ class AttentionWithNorm(nn.Module):
 
 
 class MLPWithNorm(nn.Module):
-    def __init__(self, hidden_size, layer_idx):
+    def __init__(self, hidden_size, layer_idx,
+                 swiglu_intermediate=13652, gelu_intermediate=20480):
         super().__init__()
         self.pre_norm = MultiModalityRMSNorm(hidden_size)
         if layer_idx in GELU_LAYERS:
-            self.ffn = GELU7FFN(hidden_size, hidden_size * 4)
+            self.ffn = GELU7FFN(hidden_size, gelu_intermediate)
         else:
-            intermediate = int(hidden_size * 4 * 2 / 3) // 4 * 4
-            self.ffn = SwiGLU7FFN(hidden_size, intermediate)
+            self.ffn = SwiGLU7FFN(hidden_size, swiglu_intermediate)
 
     def __call__(self, x):
         return self.ffn(self.pre_norm(x))
