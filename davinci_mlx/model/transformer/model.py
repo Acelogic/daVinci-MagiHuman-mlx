@@ -32,7 +32,7 @@ class DaVinciModel(nn.Module):
 
         # Final video output head
         self.final_norm_video = MultiModalityRMSNorm(hidden_size)
-        self.final_linear_video = nn.Linear(hidden_size, video_in_channels, bias=True)
+        self.final_linear_video = nn.Linear(hidden_size, video_in_channels, bias=False)
 
         # Store head_dim for RoPE precomputation
         self._head_dim = head_dim

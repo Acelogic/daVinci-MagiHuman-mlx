@@ -17,12 +17,13 @@ class Attention(nn.Module):
 
         q_dim = num_heads_q * head_dim
         kv_dim = num_heads_kv * head_dim
-        qkvg_dim = q_dim + 2 * kv_dim + q_dim  # Q + K + V + Gate
+        gate_dim = num_heads_q  # one scalar per query head
+        qkvg_dim = q_dim + 2 * kv_dim + gate_dim  # Q + K + V + Gate
 
-        self.linear_qkv = nn.Linear(hidden_size, qkvg_dim, bias=True)
+        self.linear_qkv = nn.Linear(hidden_size, qkvg_dim, bias=False)
         self.q_norm_weight = mx.ones((head_dim,))
         self.k_norm_weight = mx.ones((head_dim,))
-        self.linear_proj = nn.Linear(q_dim, hidden_size, bias=True)
+        self.linear_proj = nn.Linear(q_dim, hidden_size, bias=False)
 
     def __call__(self, x, cos_freqs=None, sin_freqs=None, positions=None, mask=None):
         B, T, _ = x.shape
@@ -50,7 +51,11 @@ class Attention(nn.Module):
         # MLX flash attention natively handles GQA — do NOT repeat K/V
         attn_out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
 
-        attn_out = attn_out.transpose(0, 2, 1, 3).reshape(B, T, -1)
+        # attn_out: (B, num_heads_q, T, head_dim) -> (B, T, num_heads_q, head_dim)
+        attn_out = attn_out.transpose(0, 2, 1, 3)
+        # gate: (B, T, num_heads_q) -> (B, T, num_heads_q, 1) for broadcast
+        gate = mx.sigmoid(gate).reshape(B, T, self.num_heads_q, 1)
+        attn_out = attn_out * gate
+        attn_out = attn_out.reshape(B, T, -1)
         attn_out = self.linear_proj(attn_out)
-        attn_out = attn_out * mx.sigmoid(gate)
         return attn_out

@@ -12,8 +12,8 @@ def test_attention_output_shape():
 
 def test_qkvg_projection_shape():
     attn = Attention(hidden_size=5120, num_heads_q=40, num_heads_kv=8, head_dim=128)
-    # Q: 40*128=5120, K: 8*128=1024, V: 8*128=1024, G: 40*128=5120 = 12288
-    assert attn.linear_qkv.weight.shape == (12288, 5120), f"Got {attn.linear_qkv.weight.shape}"
+    # Q: 40*128=5120, K: 8*128=1024, V: 8*128=1024, G: 40 (one per head) = 7208
+    assert attn.linear_qkv.weight.shape == (7208, 5120), f"Got {attn.linear_qkv.weight.shape}"
 
 
 def test_attention_with_rope():

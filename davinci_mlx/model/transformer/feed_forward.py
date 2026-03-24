@@ -10,8 +10,8 @@ from davinci_mlx.kernels.fused_ops import silu_mul
 class SwiGLU7FFN(nn.Module):
     def __init__(self, hidden_size=5120, intermediate_size=13652):
         super().__init__()
-        self.up_gate_proj = nn.Linear(hidden_size, intermediate_size * 2, bias=True)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=True)
+        self.up_gate_proj = nn.Linear(hidden_size, intermediate_size * 2, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
 
     def __call__(self, x):
         gate_up = self.up_gate_proj(x)
@@ -24,8 +24,8 @@ class SwiGLU7FFN(nn.Module):
 class GELU7FFN(nn.Module):
     def __init__(self, hidden_size=5120, intermediate_size=20480):
         super().__init__()
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=True)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=True)
+        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
 
     def __call__(self, x):
         hidden = nn.gelu_approx(self.up_proj(x))
