@@ -1,0 +1,20 @@
+[project]
+name = "davinci-magihuman-mlx"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "mlx>=0.25.0",
+    "safetensors",
+    "numpy",
+    "imageio[ffmpeg]",
+    "huggingface-hub",
+    "sentencepiece",
+    "tqdm",
+]
+
+[project.scripts]
+davinci-generate = "scripts.generate:main"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
