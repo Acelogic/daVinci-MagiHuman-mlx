@@ -37,8 +37,7 @@ class DaVinciModel(nn.Module):
         # Store head_dim for RoPE precomputation
         self._head_dim = head_dim
 
-    def __call__(self, video_tokens, text_tokens, coords_mapping=None):
-        B = video_tokens.shape[0]
+    def __call__(self, video_tokens, text_tokens):
         num_video = video_tokens.shape[1]
 
         # Embed to hidden_size
