@@ -16,7 +16,7 @@ class VideoLatentPatchifier:
         return x
 
     def unpatchify(self, x: mx.array, num_frames: int, height: int, width: int) -> mx.array:
-        B, N, D = x.shape
+        B, _, D = x.shape
         p = self.p
         Hp, Wp = height // p, width // p
         C = D // (p * p)
