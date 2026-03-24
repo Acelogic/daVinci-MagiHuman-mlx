@@ -15,6 +15,9 @@ dependencies = [
 [project.scripts]
 davinci-generate = "scripts.generate:main"
 
+[tool.setuptools.packages.find]
+include = ["davinci_mlx*"]
+
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
