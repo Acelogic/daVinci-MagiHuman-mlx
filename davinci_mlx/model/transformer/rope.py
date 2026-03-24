@@ -33,7 +33,7 @@ class ElementWiseFourierEmbed(nn.Module):
 
     Converts coordinate mappings to position encodings using learnable bands.
     """
-    def __init__(self, dim: int, num_bands: int = 64):
+    def __init__(self, num_bands: int = 64):
         super().__init__()
         self.num_bands = num_bands
         self.bands = mx.zeros((num_bands,))

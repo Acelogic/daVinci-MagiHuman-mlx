@@ -29,7 +29,7 @@ def test_rotary_emb_different_positions():
 
 
 def test_fourier_embed_shape():
-    embed = ElementWiseFourierEmbed(dim=128, num_bands=64)
+    embed = ElementWiseFourierEmbed(num_bands=64)
     coords = mx.random.normal((1, 100, 9))
     result = embed(coords)
     # Output: (1, 100, 9 * 64 * 2) = (1, 100, 1152)
