@@ -84,7 +84,7 @@ def test_skip_unknown():
 def test_extract_video_expert_2d():
     # Simulate 3-expert weight: (3*5120, 10) -> (5120, 10)
     weight = mx.arange(3 * 5120 * 10).reshape(3 * 5120, 10).astype(mx.float32)
-    result = _extract_video_expert(weight, "test", 0)
+    result = _extract_video_expert(weight)
     assert result.shape == (5120, 10)
     # Should be the first 5120 rows
     assert mx.array_equal(result, weight[:5120, :])
@@ -93,7 +93,7 @@ def test_extract_video_expert_2d():
 def test_extract_video_expert_1d():
     # Simulate 3-expert norm: (3*128,) -> (128,)
     weight = mx.arange(384).astype(mx.float32)
-    result = _extract_video_expert(weight, "test", 0)
+    result = _extract_video_expert(weight)
     assert result.shape == (128,)
     assert mx.array_equal(result, weight[:128])
 
@@ -101,7 +101,7 @@ def test_extract_video_expert_1d():
 def test_extract_video_expert_1d_pre_norm():
     # pre_norm.weight: (3*5120,) -> (5120,)
     weight = mx.arange(15360).astype(mx.float32)
-    result = _extract_video_expert(weight, "test", 0)
+    result = _extract_video_expert(weight)
     assert result.shape == (5120,)
     assert mx.array_equal(result, weight[:5120])
 

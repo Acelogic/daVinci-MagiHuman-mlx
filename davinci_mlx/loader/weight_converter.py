@@ -8,8 +8,6 @@ Handles:
 import gc
 import json
 from pathlib import Path
-from typing import Optional
-
 import mlx.core as mx
 from safetensors import safe_open
 
@@ -18,7 +16,7 @@ NUM_EXPERTS = 3  # video=0, audio=1, text=2
 VIDEO_EXPERT = 0
 
 
-def convert_and_load(model, weights_dir: str, target_dtype=mx.float16):
+def convert_and_load(model, weights_dir, target_dtype=mx.float16):
     """Load sharded safetensors, convert keys, extract video expert for MoE layers.
 
     Args:
@@ -59,8 +57,8 @@ def convert_and_load(model, weights_dir: str, target_dtype=mx.float16):
                 arr = mx.array(tensor)
 
                 # Extract video expert for MoE layers
-                if needs_expert_slice:
-                    arr = _extract_video_expert(arr, pt_key, layer_idx)
+                if needs_expert_slice and layer_idx is not None:
+                    arr = _extract_video_expert(arr)
 
                 arr = arr.astype(target_dtype)
                 _set_nested(converted, mlx_key, arr)
@@ -120,7 +118,7 @@ def _convert_key(pt_key: str):
     return None, False, None
 
 
-def _extract_video_expert(arr: mx.array, pt_key: str, layer_idx: int) -> mx.array:
+def _extract_video_expert(arr: mx.array) -> mx.array:
     """Extract video expert (expert 0) from MoE weight.
 
     MoE weights concatenate experts along the output dim:
