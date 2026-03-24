@@ -17,8 +17,8 @@ class SwiGLU7FFN(nn.Module):
         gate_up = self.up_gate_proj(x)
         gate, up = mx.split(gate_up, 2, axis=-1)
         hidden = silu_mul(gate, up)
-        out = self.down_proj(hidden)
-        return mx.clip(out, -7.0, 7.0)
+        hidden = mx.clip(hidden, -7.0, 7.0)
+        return self.down_proj(hidden)
 
 
 class GELU7FFN(nn.Module):
@@ -29,5 +29,5 @@ class GELU7FFN(nn.Module):
 
     def __call__(self, x):
         hidden = nn.gelu_approx(self.up_proj(x))
-        out = self.down_proj(hidden)
-        return mx.clip(out, -7.0, 7.0)
+        hidden = mx.clip(hidden, -7.0, 7.0)
+        return self.down_proj(hidden)
