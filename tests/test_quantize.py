@@ -47,8 +47,6 @@ def test_quantize_int8():
 
 def test_save_quantized_weights(tmp_path):
     """save_quantized_weights should write a safetensors file."""
-    from mlx.utils import tree_flatten
-
     class TinyModel(nn.Module):
         def __init__(self):
             super().__init__()
