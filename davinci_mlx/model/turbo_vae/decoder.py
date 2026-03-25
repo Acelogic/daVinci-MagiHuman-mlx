@@ -285,7 +285,6 @@ def load_turbo_vae_weights(decoder: TurboVAEDecoder, ckpt_path: str,
         The decoder with loaded weights.
     """
     import torch
-    import numpy as np
 
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     ema_sd = ckpt["ema_state_dict"]

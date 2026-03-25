@@ -67,7 +67,7 @@ class Conv3d(nn.Module):
         Returns:
             Output tensor (B, out_C, T', H', W').
         """
-        B, C, T, H, W = x.shape
+        B, C, _, H, W = x.shape
         kt, kh, kw = self.kernel_size
         st, sh, sw = self.stride
 

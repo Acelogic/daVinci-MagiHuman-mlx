@@ -2,7 +2,7 @@
 import mlx.core as mx
 from davinci_mlx.model.turbo_vae.conv3d import Conv3d, SpatialUpsample2x, TemporalUpsample2x
 from davinci_mlx.model.turbo_vae.decoder import (
-    ResNetBlock3d, UpBlock3d, Upsampler3d, MidBlock3d, TurboVAEDecoder,
+    ResNetBlock3d, UpBlock3d, MidBlock3d, TurboVAEDecoder,
 )
 
 
