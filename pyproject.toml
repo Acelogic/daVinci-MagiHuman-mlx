@@ -12,6 +12,9 @@ dependencies = [
     "tqdm",
 ]
 
+[project.optional-dependencies]
+text-encoder = ["transformers>=4.45.0", "torch>=2.0"]
+
 [project.scripts]
 davinci-generate = "scripts.generate:main"
 
