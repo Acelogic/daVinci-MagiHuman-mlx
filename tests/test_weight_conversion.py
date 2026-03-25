@@ -48,10 +48,10 @@ def test_convert_mlp_keys():
     assert key == "blocks.10.mlp.ffn.down_proj.weight"
 
 
-def test_convert_gelu_up_proj():
-    """GELU layers (0-3) use up_proj instead of up_gate_proj."""
-    key, moe, idx = _convert_key("block.layers.2.mlp.up_proj.weight")
-    assert key == "blocks.2.mlp.ffn.up_proj.weight"
+def test_convert_gelu_up_gate_proj():
+    """All layers (including GELU 0-3) use up_gate_proj in weights."""
+    key, moe, idx = _convert_key("block.layers.2.mlp.up_gate_proj.weight")
+    assert key == "blocks.2.mlp.ffn.up_gate_proj.weight"
     assert moe
     assert idx == 2
 

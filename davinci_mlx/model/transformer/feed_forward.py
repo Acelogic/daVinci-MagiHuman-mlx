@@ -24,10 +24,11 @@ class SwiGLU7FFN(nn.Module):
 class GELU7FFN(nn.Module):
     def __init__(self, hidden_size=5120, intermediate_size=20480):
         super().__init__()
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+        # Named up_gate_proj to match weight keys (all layers use this name)
+        self.up_gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
 
     def __call__(self, x):
-        hidden = nn.gelu_approx(self.up_proj(x))
+        hidden = nn.gelu_approx(self.up_gate_proj(x))
         hidden = mx.clip(hidden, -7.0, 7.0)
         return self.down_proj(hidden)

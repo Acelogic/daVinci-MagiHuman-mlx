@@ -67,6 +67,7 @@ def convert_and_load(model, weights_dir, target_dtype=mx.float16):
                 if count % 100 == 0:
                     gc.collect()
 
+    converted = _convert_numeric_dicts_to_lists(converted)
     model.update(converted)
     print(f"  Loaded {count} tensors, skipped {skipped}")
 
@@ -106,8 +107,6 @@ def _convert_key(pt_key: str):
         # Nest MLP subkeys under MLPWithNorm.ffn
         mlx_key = mlx_key.replace(".mlp.up_gate_proj.", ".mlp.ffn.up_gate_proj.")
         mlx_key = mlx_key.replace(".mlp.down_proj.", ".mlp.ffn.down_proj.")
-        # GELU layers use up_proj instead of up_gate_proj
-        mlx_key = mlx_key.replace(".mlp.up_proj.", ".mlp.ffn.up_proj.")
 
         return mlx_key, is_moe, layer_idx
 
@@ -135,10 +134,34 @@ def _extract_video_expert(arr: mx.array) -> mx.array:
 
 
 def _set_nested(d: dict, key: str, value):
-    """Set a nested dict value from a dotted key path."""
+    """Set a nested dict value from a dotted key path.
+
+    Handles numeric indices by converting dicts to lists before model.update().
+    Uses intermediate dicts with numeric string keys, then _convert_to_lists()
+    fixes them before update.
+    """
     parts = key.split(".")
     for part in parts[:-1]:
         if part not in d:
             d[part] = {}
         d = d[part]
     d[parts[-1]] = value
+
+
+def _convert_numeric_dicts_to_lists(d):
+    """Recursively convert dicts with numeric keys to lists for MLX model.update().
+
+    {"blocks": {"0": {...}, "1": {...}}} -> {"blocks": [{...}, {...}]}
+    """
+    if not isinstance(d, dict):
+        return d
+
+    # Check if all keys are numeric strings
+    if d and all(k.isdigit() for k in d.keys()):
+        max_idx = max(int(k) for k in d.keys())
+        result = [None] * (max_idx + 1)
+        for k, v in d.items():
+            result[int(k)] = _convert_numeric_dicts_to_lists(v)
+        return result
+
+    return {k: _convert_numeric_dicts_to_lists(v) for k, v in d.items()}

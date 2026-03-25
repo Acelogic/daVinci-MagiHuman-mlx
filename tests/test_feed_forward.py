@@ -30,7 +30,7 @@ def test_swiglu7_clamping():
 def test_gelu7_clamping():
     """Intermediate activation (before down_proj) must be clamped to [-7, 7]."""
     ffn = GELU7FFN(hidden_size=32, intermediate_size=128)
-    ffn.up_proj.weight = mx.ones_like(ffn.up_proj.weight) * 10.0
+    ffn.up_gate_proj.weight = mx.ones_like(ffn.up_gate_proj.weight) * 10.0
     x = mx.ones((1, 4, 32)) * 10.0
     result = ffn(x)
     mx.eval(result)
