@@ -1,5 +1,7 @@
 # daVinci-MagiHuman MLX
 
+> **WIP — This project is under active development and does not produce usable video output yet.** The full pipeline runs end-to-end (text encoding, 10.9B transformer denoising, VAE decode) but output quality is not correct — likely due to scheduler tuning, positional encoding, or VAE denormalization issues still being debugged. Contributions and investigation welcome.
+
 Native Apple Silicon port of [daVinci-MagiHuman](https://github.com/GAIR-NLP/daVinci-MagiHuman) — a 15B parameter video generation model — running entirely on MLX.
 
 Generate talking-head and general video from text prompts on your Mac, no GPU server required.
