@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import mlx.core as mx
 from safetensors import safe_open
+from tqdm import tqdm
 
 MOE_LAYERS = set(range(4)) | set(range(36, 40))  # layers 0-3, 36-39
 NUM_EXPERTS = 3  # video=0, audio=1, text=2
@@ -39,13 +40,11 @@ def convert_and_load(model, weights_dir, target_dtype=mx.float16):
     count = 0
     skipped = 0
 
-    for shard_file in shard_files:
+    for shard_file in tqdm(shard_files, desc="Loading weights", bar_format="{desc}: {bar} {n_fmt}/{total_fmt} shards"):
         shard_path = weights_dir / shard_file
         if not shard_path.exists():
-            print(f"  Skipping missing shard: {shard_file}")
             continue
 
-        print(f"  Loading {shard_file}...")
         with safe_open(str(shard_path), framework="numpy") as sf:
             for pt_key in sf.keys():
                 mlx_key, needs_expert_slice, layer_idx = _convert_key(pt_key)

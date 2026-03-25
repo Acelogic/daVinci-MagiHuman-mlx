@@ -26,9 +26,8 @@ class TextEncoder:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.model = AutoModel.from_pretrained(
             self.model_name,
-            torch_dtype=torch.float32,
+            dtype=torch.float32,
             device_map="cpu",
-            is_encoder_decoder=False,
         )
         self.model.eval()
         print("  Text encoder loaded.")

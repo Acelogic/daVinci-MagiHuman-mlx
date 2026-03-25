@@ -8,9 +8,12 @@ Flow:
 5. Save video
 """
 import gc
+import time
 from pathlib import Path
+
 import mlx.core as mx
 import numpy as np
+from tqdm import tqdm
 
 from davinci_mlx.model.transformer.model import DaVinciModel
 from davinci_mlx.loader.weight_converter import convert_and_load
@@ -33,14 +36,13 @@ class DistilledPipeline:
         self.patchifier = VideoLatentPatchifier(patch_size=2)
 
     def _load_text_encoder(self):
-        """Load and return a TextEncoder instance. Raises helpful error if deps missing."""
+        """Load and return a TextEncoder instance."""
         try:
             from davinci_mlx.model.text_encoder.encoder import TextEncoder
         except ImportError:
             raise ImportError(
                 "Text encoder requires 'transformers' and 'torch'. "
-                "Install them with:\n"
-                "  pip install transformers torch\n"
+                "Install with: pip install transformers torch"
             )
         return TextEncoder()
 
@@ -56,45 +58,54 @@ class DistilledPipeline:
         """Generate video from text prompt. Returns (T, H, W, C) uint8 numpy."""
         validate_dimensions(height, width, num_frames)
         mx.random.seed(seed)
+        total_start = time.time()
 
-        # 1. Text encoding
-        print("Loading text encoder...")
+        # ── 1. Text encoding ──────────────────────────────────────────
         try:
             encoder = self._load_text_encoder()
-            encoder.load()
-            text_embeddings = encoder.encode(prompt)
-            print(f"  Text embeddings: {text_embeddings.shape}")
-            encoder.unload()
-            del encoder
-            gc.collect()
-        except ImportError as e:
-            print(f"  Warning: {e}")
-            print("  Falling back to zero embeddings (output will be meaningless).")
+            with tqdm(total=3, desc="Text encoder", bar_format="{desc}: {bar} {n_fmt}/{total_fmt}") as pbar:
+                pbar.set_postfix_str("loading model...")
+                encoder.load()
+                pbar.update(1)
+
+                pbar.set_postfix_str("encoding prompt...")
+                text_embeddings = encoder.encode(prompt)
+                pbar.update(1)
+
+                pbar.set_postfix_str("unloading...")
+                encoder.unload()
+                del encoder
+                gc.collect()
+                pbar.update(1)
+                pbar.set_postfix_str(f"done ({text_embeddings.shape[1]} tokens)")
+        except ImportError:
+            print("  Text encoder not available (install transformers + torch)")
+            print("  Using zero embeddings — output will be noise")
             text_embeddings = mx.zeros((1, 64, 3584), dtype=self.dtype)
 
-        # 2. Initialize noise latent
+        # ── 2. Initialize noise latent ────────────────────────────────
         latent_shape = compute_latent_shape(height, width, num_frames)
         latent = mx.random.normal((1, *latent_shape)).astype(self.dtype)
 
-        # 3. Denoise
-        print("Loading transformer...")
+        # ── 3. Load transformer ───────────────────────────────────────
         model = DaVinciModel()
         convert_and_load(model, self.weights_dir / "distill", target_dtype=self.dtype)
 
+        # ── 4. Denoise ────────────────────────────────────────────────
         sigmas = self.scheduler.get_sigmas(steps)
 
-        for i in range(steps):
+        denoise_pbar = tqdm(
+            range(steps),
+            desc="Denoising",
+            bar_format="{desc}: {bar} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+        )
+        for i in denoise_pbar:
+            step_start = time.time()
             sigma = sigmas[i]
             sigma_next = sigmas[i + 1]
-            print(f"  Step {i+1}/{steps} (sigma={float(sigma):.4f})")
 
-            # Patchify: (1, 48, T, H, W) -> (1, N, 192)
             video_tokens = self.patchifier.patchify(latent)
-
-            # Forward pass: predict velocity
             velocity_tokens = model(video_tokens, text_embeddings)
-
-            # Unpatchify: (1, N, 192) -> (1, 48, T, H, W)
             velocity = self.patchifier.unpatchify(
                 velocity_tokens,
                 num_frames=latent_shape[1],
@@ -102,35 +113,43 @@ class DistilledPipeline:
                 width=latent_shape[3],
             )
 
-            # Compute denoised prediction
             denoised = latent - sigma * velocity
-
-            # Euler step
             latent = self.scheduler.step(latent, denoised, sigma, sigma_next)
-
-            # CRITICAL: Force evaluation to prevent graph accumulation
             mx.eval(latent)
+
+            step_time = time.time() - step_start
+            denoise_pbar.set_postfix_str(f"sigma={float(sigma):.3f}, {step_time:.1f}s/step")
+        denoise_pbar.close()
 
         del model
         gc.collect()
 
-        # 4. VAE decode
-        print("Loading VAE decoder...")
-        vae = TurboVAEDecoder()
-        load_turbo_vae_weights(
-            vae,
-            str(self.weights_dir / "turbo_vae" / "checkpoint-340000.ckpt"),
-        )
+        # ── 5. VAE decode ─────────────────────────────────────────────
+        with tqdm(total=3, desc="VAE decode", bar_format="{desc}: {bar} {n_fmt}/{total_fmt}") as pbar:
+            pbar.set_postfix_str("loading weights...")
+            vae = TurboVAEDecoder()
+            load_turbo_vae_weights(
+                vae,
+                str(self.weights_dir / "turbo_vae" / "checkpoint-340000.ckpt"),
+            )
+            pbar.update(1)
 
-        video = vae(latent)
-        mx.eval(video)
-        print(f"  VAE output: {video.shape}")
+            pbar.set_postfix_str("decoding latents...")
+            video = vae(latent)
+            mx.eval(video)
+            pbar.update(1)
 
-        del vae
-        gc.collect()
+            pbar.set_postfix_str("cleanup...")
+            del vae
+            gc.collect()
+            pbar.update(1)
 
-        # 5. Convert to numpy and return
-        print("Done.")
+            T_out = video.shape[2]
+            pbar.set_postfix_str(f"done ({T_out} frames)")
+
+        total_time = time.time() - total_start
+        print(f"\nGeneration complete: {height}x{width}, {T_out} frames in {total_time:.1f}s")
+
         return video_to_numpy(video)
 
     def save_video(self, frames: np.ndarray, path: str, fps: int = 24):
