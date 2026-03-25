@@ -26,8 +26,12 @@ def compute_latent_shape(height: int, width: int, num_frames: int):
 
 
 def video_to_numpy(video: mx.array) -> np.ndarray:
-    """Convert (B, C, T, H, W) float video to (T, H, W, C) uint8 numpy."""
-    v = video[0].transpose(1, 2, 3, 0)
+    """Convert (B, C, T, H, W) float video to (T, H, W, C) uint8 numpy.
+
+    The VAE outputs values in [-1, 1] range. We rescale to [0, 255].
+    """
+    v = video[0].transpose(1, 2, 3, 0)  # (C, T, H, W) -> (T, H, W, C)
+    v = (v + 1.0) * 0.5  # [-1, 1] -> [0, 1]
     v = mx.clip(v * 255.0, 0, 255).astype(mx.uint8)
     return np.array(v)
 

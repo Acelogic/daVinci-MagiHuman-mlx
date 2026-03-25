@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--precision", choices=["float16", "int4"], default="float16")
     parser.add_argument("--output", type=str, default="output.mp4")
-    parser.add_argument("--weights-dir", type=str, default="weights/fp16")
+    parser.add_argument("--weights-dir", type=str, default="weights/original")
     parser.add_argument("--sr", action="store_true", help="Apply 540p super-resolution")
     args = parser.parse_args()
 

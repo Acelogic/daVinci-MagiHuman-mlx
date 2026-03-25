@@ -15,6 +15,8 @@ import mlx.core as mx
 import numpy as np
 
 from davinci_mlx.model.transformer.model import DaVinciModel
+from davinci_mlx.loader.weight_converter import convert_and_load
+from davinci_mlx.model.turbo_vae.decoder import TurboVAEDecoder, load_turbo_vae_weights
 from davinci_mlx.components.scheduler import FlowMatchingScheduler
 from davinci_mlx.components.patchifier import VideoLatentPatchifier
 from davinci_mlx.pipeline.common import (
@@ -26,11 +28,23 @@ from davinci_mlx.pipeline.common import (
 
 
 class DistilledPipeline:
-    def __init__(self, weights_dir: str = "weights/fp16", precision: str = "float16"):
+    def __init__(self, weights_dir: str = "weights/original", precision: str = "float16"):
         self.weights_dir = Path(weights_dir)
         self.dtype = mx.float16 if precision == "float16" else mx.float32
         self.scheduler = FlowMatchingScheduler()
         self.patchifier = VideoLatentPatchifier(patch_size=2)
+
+    def _load_text_encoder(self):
+        """Load and return a TextEncoder instance. Raises helpful error if deps missing."""
+        try:
+            from davinci_mlx.model.text_encoder.encoder import TextEncoder
+        except ImportError:
+            raise ImportError(
+                "Text encoder requires 'transformers' and 'torch'. "
+                "Install them with:\n"
+                "  pip install transformers torch\n"
+            )
+        return TextEncoder()
 
     def generate(
         self,
@@ -45,11 +59,20 @@ class DistilledPipeline:
         validate_dimensions(height, width, num_frames)
         mx.random.seed(seed)
 
-        # 1. Text encoding (placeholder — needs text encoder implementation)
-        # TODO: Load text encoder, encode prompt, unload
-        text_seq_len = 64  # placeholder
-        text_embeddings = mx.zeros((1, text_seq_len, 3584), dtype=self.dtype)
-        print(f"[placeholder] Text encoding skipped — using zeros ({text_seq_len} tokens)")
+        # 1. Text encoding
+        print("Loading text encoder...")
+        try:
+            encoder = self._load_text_encoder()
+            encoder.load()
+            text_embeddings = encoder.encode(prompt)
+            print(f"  Text embeddings: {text_embeddings.shape}")
+            encoder.unload()
+            del encoder
+            gc.collect()
+        except ImportError as e:
+            print(f"  Warning: {e}")
+            print("  Falling back to zero embeddings (output will be meaningless).")
+            text_embeddings = mx.zeros((1, 64, 3584), dtype=self.dtype)
 
         # 2. Initialize noise latent
         latent_shape = compute_latent_shape(height, width, num_frames)
@@ -58,7 +81,7 @@ class DistilledPipeline:
         # 3. Denoise
         print("Loading transformer...")
         model = DaVinciModel()
-        # TODO: load_weights(model, self.weights_dir / "transformer", target_dtype=self.dtype)
+        convert_and_load(model, self.weights_dir / "distill", target_dtype=self.dtype)
 
         sigmas = self.scheduler.get_sigmas(steps)
 
@@ -93,11 +116,22 @@ class DistilledPipeline:
         del model
         gc.collect()
 
-        # 4. VAE decode (placeholder — needs VAE implementation)
-        # TODO: Load turbo VAE, decode, unload
-        print("[placeholder] VAE decode skipped — returning noise as video")
-        video = latent  # placeholder
+        # 4. VAE decode
+        print("Loading VAE decoder...")
+        vae = TurboVAEDecoder()
+        load_turbo_vae_weights(
+            vae,
+            str(self.weights_dir / "turbo_vae" / "checkpoint-340000.ckpt"),
+        )
 
+        video = vae(latent)
+        mx.eval(video)
+        print(f"  VAE output: {video.shape}")
+
+        del vae
+        gc.collect()
+
+        # 5. Convert to numpy and return
         print("Done.")
         return video_to_numpy(video)
 
