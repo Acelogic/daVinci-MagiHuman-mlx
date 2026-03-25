@@ -9,8 +9,6 @@ Flow:
 """
 import gc
 from pathlib import Path
-from typing import Optional
-
 import mlx.core as mx
 import numpy as np
 
